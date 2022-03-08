@@ -1,18 +1,12 @@
 defmodule TodoEx.Cache do
   alias TodoEx.Server
 
-  #   _____________________
-  # ((                    ))
-  # )) Client   Interface ((
-  # ((                    ))
-  #  ---------------------
-
   @doc """
-  Starts an Cache Supervisor that keeps is useful to start and retrieve TodoListServer's.
+  Starts an Cache Supervisor that is useful to start and retrieve TodoListServer's.
   """
   @spec start_link() :: GenServer.on_start()
   def start_link() do
-    IO.puts("[CacheServer]: Starting...")
+    IO.puts("[CacheSupervisor]: Starting...")
     DynamicSupervisor.start_link(name: __MODULE__, strategy: :one_for_one)
   end
 

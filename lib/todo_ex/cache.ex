@@ -1,6 +1,6 @@
 defmodule TodoEx.Cache do
   use GenServer
-  alias TodoEx.{Database, Server}
+  alias TodoEx.Server
 
   #   _____________________
   # ((                    ))
@@ -11,13 +11,11 @@ defmodule TodoEx.Cache do
   @doc """
   Starts an Cache Server that keeps `name~pid` of TodoListServer's.
   """
-  @spec start() :: pid()
-  def start() do
-    GenServer.start(__MODULE__, %{}, name: __MODULE__)
-    |> case do
-      {:ok, pid} -> pid
-      {:error, {:already_started, pid}} -> pid
-    end
+  @spec start_link(any()) :: GenServer.on_start()
+  def start_link(_) do
+    IO.puts("[CacheServer]: Starting...")
+
+    GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
   end
 
   @doc """
@@ -39,7 +37,6 @@ defmodule TodoEx.Cache do
   @doc false
   @impl GenServer
   def init(initial_state) do
-    Database.start()
     {:ok, initial_state}
   end
 
@@ -51,7 +48,7 @@ defmodule TodoEx.Cache do
         {:reply, server_pid, state}
 
       :error ->
-        server_pid = Server.start(name)
+        server_pid = Server.start_link(name)
         {:reply, server_pid, Map.put(state, name, server_pid)}
     end
   end

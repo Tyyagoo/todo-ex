@@ -6,9 +6,9 @@ defmodule TodoEx.Entry do
 
   @doc """
   Creates a new entry from a title and date.
-  
+
     ## Examples
-  
+
       iex> alias TodoEx.Entry
       TodoEx.Entry
       iex> {:ok, date} = Date.new(2022, 03, 06)
@@ -22,9 +22,9 @@ defmodule TodoEx.Entry do
 
   @doc """
   Creates a new entry from a map that contains the title and date fields.
-  
+
     ## Examples
-  
+
       iex> alias TodoEx.Entry
       TodoEx.Entry
       iex> {:ok, date} = Date.new(2022, 03, 06)

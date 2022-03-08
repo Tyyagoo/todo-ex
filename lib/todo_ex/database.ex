@@ -13,13 +13,11 @@ defmodule TodoEx.Database do
   Starts a new Database server.
   If this server is already started, only return it's pid.
   """
-  @spec start() :: pid()
-  def start() do
-    GenServer.start(__MODULE__, nil, name: __MODULE__)
-    |> case do
-      {:ok, pid} -> pid
-      {:error, {:already_started, pid}} -> pid
-    end
+  @spec start_link(any()) :: GenServer.on_start()
+  def start_link(_) do
+    IO.puts("[DatabaseServer]: Starting...")
+
+    GenServer.start_link(__MODULE__, nil, name: __MODULE__)
   end
 
   @doc """
@@ -56,7 +54,7 @@ defmodule TodoEx.Database do
   def init(_) do
     workers =
       0..2
-      |> Stream.map(fn i -> {i, TodoEx.Database.Worker.start(@path)} end)
+      |> Stream.map(fn i -> {i, TodoEx.Database.Worker.start_link(@path)} end)
       |> Enum.into(%{})
 
     case File.mkdir_p(@path) do
@@ -93,8 +91,10 @@ defmodule TodoEx.Database.Worker do
   # ((                    ))
   #  ---------------------
 
-  def start(path) do
-    {:ok, pid} = GenServer.start(__MODULE__, path)
+  def start_link(path) do
+    IO.puts("[DatabaseWorkerServer]: Starting...")
+
+    {:ok, pid} = GenServer.start_link(__MODULE__, path)
     pid
   end
 

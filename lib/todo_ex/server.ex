@@ -11,9 +11,11 @@ defmodule TodoEx.Server do
   @doc """
   Starts an stateful process to handle TodoList operations.
   """
-  @spec start(name :: String.t()) :: pid()
-  def start(name) when is_binary(name) do
-    {:ok, pid} = GenServer.start(__MODULE__, name)
+  @spec start_link(name :: String.t()) :: pid()
+  def start_link(name) when is_binary(name) do
+    IO.puts("[TodoListServer]: Starting #{name}...")
+
+    {:ok, pid} = GenServer.start_link(__MODULE__, name)
     pid
   end
 

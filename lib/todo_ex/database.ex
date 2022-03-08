@@ -1,23 +1,20 @@
 defmodule TodoEx.Database do
-  use GenServer
+  alias TodoEx.Database.Worker
 
   @path "./db"
-
-  #   _____________________
-  # ((                    ))
-  # )) Client   Interface ((
-  # ((                    ))
-  #  ---------------------
+  @pool_size 5
 
   @doc """
-  Starts a new Database server.
-  If this server is already started, only return it's pid.
+  Starts a new Database Supervisor.
   """
-  @spec start_link(any()) :: GenServer.on_start()
-  def start_link(_) do
-    IO.puts("[DatabaseServer]: Starting...")
+  @spec start_link() :: Supervisor.on_start()
+  def start_link() do
+    IO.puts("[DatabaseSupervisor]: Starting...")
+    File.mkdir_p!(@path)
 
-    GenServer.start_link(__MODULE__, nil, name: __MODULE__)
+    1..@pool_size
+    |> Enum.map(&worker_spec/1)
+    |> Supervisor.start_link(name: __MODULE__, strategy: :one_for_one)
   end
 
   @doc """
@@ -25,8 +22,9 @@ defmodule TodoEx.Database do
   """
   @spec store(key :: String.t(), data :: term()) :: :ok
   def store(key, data) do
-    worker = choose_worker(key)
-    GenServer.cast(__MODULE__, {:store, key, data, worker})
+    key
+    |> choose_worker()
+    |> Worker.store(key, data)
   end
 
   @doc """
@@ -34,51 +32,24 @@ defmodule TodoEx.Database do
   """
   @spec get(key :: String.t()) :: term()
   def get(key) do
-    worker = choose_worker(key)
-    GenServer.call(__MODULE__, {:get, key, worker})
+    key
+    |> choose_worker()
+    |> Worker.get(key)
   end
 
-  @spec choose_worker(key :: String.t()) :: pid()
+  def child_spec(_) do
+    %{id: __MODULE__, start: {__MODULE__, :start_link, []}, type: :supervisor}
+  end
+
+  @spec choose_worker(key :: String.t()) :: non_neg_integer()
   defp choose_worker(key) do
-    GenServer.call(__MODULE__, {:choose_worker, key})
+    :erlang.phash2(key, @pool_size) + 1
   end
 
-  #   __________________________
-  # ((                         ))
-  # )) Server   Implementation ((
-  # ((                         ))
-  #  --------------------------
-
-  @doc false
-  @impl GenServer
-  def init(_) do
-    workers =
-      0..2
-      |> Stream.map(fn i -> {i, TodoEx.Database.Worker.start_link(@path)} end)
-      |> Enum.into(%{})
-
-    case File.mkdir_p(@path) do
-      :ok -> {:ok, workers}
-      {:error, reason} -> {:stop, reason}
-    end
-  end
-
-  @doc false
-  @impl GenServer
-  def handle_cast({:store, key, data, worker}, state) do
-    GenServer.cast(worker, {:store, key, data})
-    {:noreply, state}
-  end
-
-  @doc false
-  @impl GenServer
-  def handle_call({:get, key, worker}, caller, state) do
-    GenServer.cast(worker, {:get, key, caller})
-    {:noreply, state}
-  end
-
-  def handle_call({:choose_worker, key}, _, state) do
-    {:reply, Map.get(state, :erlang.phash2(key, 3)), state}
+  @spec worker_spec(worker_id :: non_neg_integer()) :: Supervisor.child_spec()
+  defp worker_spec(worker_id) do
+    default = {Worker, {@path, worker_id}}
+    Supervisor.child_spec(default, id: worker_id)
   end
 end
 
@@ -91,11 +62,21 @@ defmodule TodoEx.Database.Worker do
   # ((                    ))
   #  ---------------------
 
-  def start_link(path) do
-    IO.puts("[DatabaseWorkerServer]: Starting...")
+  def start_link({path, id}) do
+    IO.puts("[DatabaseWorkerServer@#{id}]: Starting...")
+    GenServer.start_link(__MODULE__, path, name: via(id))
+  end
 
-    {:ok, pid} = GenServer.start_link(__MODULE__, path)
-    pid
+  def store(id, key, data) do
+    GenServer.cast(via(id), {:store, key, data})
+  end
+
+  def get(id, key) do
+    GenServer.call(via(id), {:get, key})
+  end
+
+  defp via(id) do
+    TodoEx.ProcessRegistry.via({__MODULE__, id})
   end
 
   #   __________________________
@@ -119,7 +100,9 @@ defmodule TodoEx.Database.Worker do
     {:noreply, state}
   end
 
-  def handle_cast({:get, key, caller}, state) do
+  @doc false
+  @impl GenServer
+  def handle_call({:get, key}, _, state) do
     data =
       file_name(state, key)
       |> File.read()
@@ -128,8 +111,7 @@ defmodule TodoEx.Database.Worker do
         _ -> nil
       end
 
-    GenServer.reply(caller, data)
-    {:noreply, state}
+    {:reply, data, state}
   end
 
   defp file_name(path, key) do

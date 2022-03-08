@@ -1,5 +1,5 @@
 defmodule TodoEx.Server do
-  use GenServer
+  use GenServer, restart: :temporary
   alias TodoEx.{Database, Entry, List}
 
   #   _____________________
@@ -11,12 +11,10 @@ defmodule TodoEx.Server do
   @doc """
   Starts an stateful process to handle TodoList operations.
   """
-  @spec start_link(name :: String.t()) :: pid()
+  @spec start_link(name :: String.t()) :: GenServer.on_start()
   def start_link(name) when is_binary(name) do
-    IO.puts("[TodoListServer]: Starting #{name}...")
-
-    {:ok, pid} = GenServer.start_link(__MODULE__, name)
-    pid
+    IO.puts("[TodoListServer@#{name}]: Starting...")
+    GenServer.start_link(__MODULE__, name, name: via(name))
   end
 
   @doc """
@@ -65,6 +63,10 @@ defmodule TodoEx.Server do
   @spec entries(pid :: pid(), date :: Date.t()) :: list(Entry.t())
   def entries(pid, date) do
     GenServer.call(pid, {:query_entries_by_date, date})
+  end
+
+  defp via(name) do
+    TodoEx.ProcessRegistry.via({__MODULE__, name})
   end
 
   #   __________________________

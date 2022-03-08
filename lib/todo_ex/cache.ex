@@ -1,5 +1,4 @@
 defmodule TodoEx.Cache do
-  use GenServer
   alias TodoEx.Server
 
   #   _____________________
@@ -9,13 +8,12 @@ defmodule TodoEx.Cache do
   #  ---------------------
 
   @doc """
-  Starts an Cache Server that keeps `name~pid` of TodoListServer's.
+  Starts an Cache Supervisor that keeps is useful to start and retrieve TodoListServer's.
   """
-  @spec start_link(any()) :: GenServer.on_start()
-  def start_link(_) do
+  @spec start_link() :: GenServer.on_start()
+  def start_link() do
     IO.puts("[CacheServer]: Starting...")
-
-    GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
+    DynamicSupervisor.start_link(name: __MODULE__, strategy: :one_for_one)
   end
 
   @doc """
@@ -25,31 +23,21 @@ defmodule TodoEx.Cache do
   """
   @spec server_process(todo_list_name :: String.t()) :: pid()
   def server_process(todo_list_name) do
-    GenServer.call(__MODULE__, {:server_process, todo_list_name})
-  end
-
-  #   __________________________
-  # ((                         ))
-  # )) Server   Implementation ((
-  # ((                         ))
-  #  --------------------------
-
-  @doc false
-  @impl GenServer
-  def init(initial_state) do
-    {:ok, initial_state}
-  end
-
-  @doc false
-  @impl GenServer
-  def handle_call({:server_process, name}, _, state) do
-    case Map.fetch(state, name) do
-      {:ok, server_pid} ->
-        {:reply, server_pid, state}
-
-      :error ->
-        server_pid = Server.start_link(name)
-        {:reply, server_pid, Map.put(state, name, server_pid)}
+    case start_child(todo_list_name) do
+      {:ok, pid} -> pid
+      {:error, {:already_started, pid}} -> pid
     end
+  end
+
+  def child_spec(_) do
+    %{
+      id: __MODULE__,
+      start: {__MODULE__, :start_link, []},
+      type: :supervisor
+    }
+  end
+
+  defp start_child(todo_list_name) do
+    DynamicSupervisor.start_child(__MODULE__, {Server, todo_list_name})
   end
 end

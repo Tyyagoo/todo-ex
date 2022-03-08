@@ -1,6 +1,6 @@
 defmodule TodoEx.Server do
   use GenServer
-  alias TodoEx.{Entry, List}
+  alias TodoEx.{Database, Entry, List}
 
   #   _____________________
   # ((                    ))
@@ -9,60 +9,60 @@ defmodule TodoEx.Server do
   #  ---------------------
 
   @doc """
-  Starts an stateful process to handle TodoList operations with an desired initial state.
+  Starts an stateful process to handle TodoList operations.
   """
-  @spec start(initial_state :: list()) :: pid()
-  def start(initial_state \\ []) when is_list(initial_state) do
-    {:ok, pid} = GenServer.start(__MODULE__, initial_state, name: __MODULE__)
+  @spec start(name :: String.t()) :: pid()
+  def start(name) when is_binary(name) do
+    {:ok, pid} = GenServer.start(__MODULE__, name)
     pid
   end
 
   @doc """
   Cast an `fire & forget` operation into the process that's adds an Entry to TodoList.
   """
-  @spec add_entry(entry :: Entry.t()) :: :ok
-  def add_entry(entry) do
-    GenServer.cast(__MODULE__, {:add_entry, entry})
+  @spec add_entry(pid :: pid(), entry :: Entry.t()) :: :ok
+  def add_entry(pid, entry) do
+    GenServer.cast(pid, {:add_entry, entry})
   end
 
   @doc """
   Cast an `fire & forget` operation into the process that's removes an Entry from TodoList.
   """
-  @spec delete_entry(id :: non_neg_integer()) :: :ok
-  def delete_entry(id) do
-    GenServer.cast(__MODULE__, {:delete_entry, id})
+  @spec delete_entry(pid :: pid(), id :: non_neg_integer()) :: :ok
+  def delete_entry(pid, id) do
+    GenServer.cast(pid, {:delete_entry, id})
   end
 
   @doc """
   Cast an `fire & forget` operation into the process that's updates an Entry on TodoList.
   """
-  @spec update_entry(id :: non_neg_integer(), content :: map()) :: :ok
-  def update_entry(id, content) do
-    GenServer.cast(__MODULE__, {:update_entry, id, content})
+  @spec update_entry(pid :: pid(), id :: non_neg_integer(), content :: map()) :: :ok
+  def update_entry(pid, id, content) do
+    GenServer.cast(pid, {:update_entry, id, content})
   end
 
   @doc """
   Query an specific entry from TodoList process and awaits the response.
   """
-  @spec entry(id :: non_neg_integer()) :: Entry.t() | nil
-  def entry(id) do
-    GenServer.call(__MODULE__, {:query_entry, id})
+  @spec entry(pid :: pid(), id :: non_neg_integer()) :: Entry.t() | nil
+  def entry(pid, id) do
+    GenServer.call(pid, {:query_entry, id})
   end
 
   @doc """
   Query all entries from TodoList process and awaits the response.
   """
-  @spec entries() :: list(Entry.t())
-  def entries() do
-    GenServer.call(__MODULE__, :query_all_entries)
+  @spec entries(pid :: pid()) :: list(Entry.t())
+  def entries(pid) do
+    GenServer.call(pid, :query_all_entries)
   end
 
   @doc """
   Query all entries of the desired date from TodoList process and awaits the response.
   """
-  @spec entries(date :: Date.t()) :: list(Entry.t())
-  def entries(date) do
-    GenServer.call(__MODULE__, {:query_entries_by_date, date})
+  @spec entries(pid :: pid(), date :: Date.t()) :: list(Entry.t())
+  def entries(pid, date) do
+    GenServer.call(pid, {:query_entries_by_date, date})
   end
 
   #   __________________________
@@ -73,35 +73,49 @@ defmodule TodoEx.Server do
 
   @doc false
   @impl GenServer
-  def init(initial_state) do
-    {:ok, List.new(initial_state)}
+  def init(name) do
+    send(self(), :initialize)
+    {:ok, {name, nil}}
   end
 
   @doc false
   @impl GenServer
-  def handle_cast({:add_entry, entry}, state) do
-    {:noreply, List.add_entry(state, entry)}
-  end
-
-  def handle_cast({:delete_entry, id}, state) do
-    {:noreply, List.delete_entry(state, id)}
-  end
-
-  def handle_cast({:update_entry, id, content}, state) do
-    {:noreply, List.update_entry(state, id, content)}
+  def handle_info(:initialize, {name, nil}) do
+    initial_state = Database.get(name) || List.new()
+    {:noreply, {name, initial_state}}
   end
 
   @doc false
   @impl GenServer
-  def handle_call({:query_entry, id}, _, state) do
-    {:reply, List.entry(state, id), state}
+  def handle_cast({:add_entry, entry}, {name, list}) do
+    new_list = List.add_entry(list, entry)
+    Database.store(name, new_list)
+    {:noreply, {name, new_list}}
   end
 
-  def handle_call(:query_all_entries, _, state) do
-    {:reply, List.entries(state), state}
+  def handle_cast({:delete_entry, id}, {name, list}) do
+    new_list = List.delete_entry(list, id)
+    Database.store(name, new_list)
+    {:noreply, {name, new_list}}
   end
 
-  def handle_call({:query_entries_by_date, date}, _, state) do
-    {:reply, List.entries(state, date), state}
+  def handle_cast({:update_entry, id, content}, {name, list}) do
+    new_list = List.update_entry(list, id, content)
+    Database.store(name, new_list)
+    {:noreply, {name, new_list}}
+  end
+
+  @doc false
+  @impl GenServer
+  def handle_call({:query_entry, id}, _, {_, list} = state) do
+    {:reply, List.entry(list, id), state}
+  end
+
+  def handle_call(:query_all_entries, _, {_, list} = state) do
+    {:reply, List.entries(list), state}
+  end
+
+  def handle_call({:query_entries_by_date, date}, _, {_, list} = state) do
+    {:reply, List.entries(list, date), state}
   end
 end

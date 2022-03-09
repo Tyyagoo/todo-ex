@@ -5,26 +5,11 @@ defmodule TodoEx.Database do
   @pool_size 5
 
   @doc """
-  Starts a new Database Supervisor.
-  """
-  @spec start_link() :: Supervisor.on_start()
-  def start_link() do
-    IO.puts("[DatabaseSupervisor]: Starting...")
-    File.mkdir_p!(@path)
-
-    1..@pool_size
-    |> Enum.map(&worker_spec/1)
-    |> Supervisor.start_link(name: __MODULE__, strategy: :one_for_one)
-  end
-
-  @doc """
   Asynchronously stores data in a file named `key`.
   """
   @spec store(key :: String.t(), data :: term()) :: :ok
   def store(key, data) do
-    key
-    |> choose_worker()
-    |> Worker.store(key, data)
+    :poolboy.transaction(__MODULE__, &Worker.store(&1, key, data))
   end
 
   @doc """
@@ -32,24 +17,22 @@ defmodule TodoEx.Database do
   """
   @spec get(key :: String.t()) :: term()
   def get(key) do
-    key
-    |> choose_worker()
-    |> Worker.get(key)
+    :poolboy.transaction(__MODULE__, &Worker.get(&1, key))
   end
 
   def child_spec(_) do
-    %{id: __MODULE__, start: {__MODULE__, :start_link, []}, type: :supervisor}
-  end
+    IO.puts("[DatabaseSupervisor]: Starting...")
+    File.mkdir_p!(@path)
 
-  @spec choose_worker(key :: String.t()) :: non_neg_integer()
-  defp choose_worker(key) do
-    :erlang.phash2(key, @pool_size) + 1
-  end
-
-  @spec worker_spec(worker_id :: non_neg_integer()) :: Supervisor.child_spec()
-  defp worker_spec(worker_id) do
-    default = {Worker, {@path, worker_id}}
-    Supervisor.child_spec(default, id: worker_id)
+    :poolboy.child_spec(
+      __MODULE__,
+      [
+        name: {:local, __MODULE__},
+        worker_module: Worker,
+        size: 5
+      ],
+      [@path]
+    )
   end
 end
 
@@ -62,21 +45,17 @@ defmodule TodoEx.Database.Worker do
   # ((                    ))
   #  ---------------------
 
-  def start_link({path, id}) do
-    IO.puts("[DatabaseWorkerServer@#{id}]: Starting...")
-    GenServer.start_link(__MODULE__, path, name: via(id))
+  def start_link(path) do
+    IO.puts("[DatabaseWorkerServer]: Starting...")
+    GenServer.start_link(__MODULE__, path)
   end
 
-  def store(id, key, data) do
-    GenServer.cast(via(id), {:store, key, data})
+  def store(pid, key, data) do
+    GenServer.cast(pid, {:store, key, data})
   end
 
-  def get(id, key) do
-    GenServer.call(via(id), {:get, key})
-  end
-
-  defp via(id) do
-    TodoEx.ProcessRegistry.via({__MODULE__, id})
+  def get(pid, key) do
+    GenServer.call(pid, {:get, key})
   end
 
   #   __________________________

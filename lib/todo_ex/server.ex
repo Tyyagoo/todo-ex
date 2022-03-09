@@ -2,6 +2,8 @@ defmodule TodoEx.Server do
   use GenServer, restart: :temporary
   alias TodoEx.{Database, Entry, List}
 
+  @idle_timeout :timer.seconds(10)
+
   #   _____________________
   # ((                    ))
   # )) Client   Interface ((
@@ -13,7 +15,6 @@ defmodule TodoEx.Server do
   """
   @spec start_link(name :: String.t()) :: GenServer.on_start()
   def start_link(name) when is_binary(name) do
-    IO.puts("[TodoListServer@#{name}]: Starting...")
     GenServer.start_link(__MODULE__, name, name: via(name))
   end
 
@@ -78,15 +79,22 @@ defmodule TodoEx.Server do
   @doc false
   @impl GenServer
   def init(name) do
+    IO.puts("[TodoListServer@#{name}]: Starting...")
     send(self(), :initialize)
-    {:ok, {name, nil}}
+    {:ok, {name, nil}, @idle_timeout}
   end
 
   @doc false
   @impl GenServer
   def handle_info(:initialize, {name, nil}) do
     initial_state = Database.get(name) || List.new()
-    {:noreply, {name, initial_state}}
+    {:noreply, {name, initial_state}, @idle_timeout}
+  end
+
+  def handle_info(:timeout, {name, list} = state) do
+    IO.puts("[TodoListServer@#{name}]: Terminating (Reason: IDLE)")
+    Database.store(name, list)
+    {:stop, :normal, state}
   end
 
   @doc false
@@ -94,32 +102,32 @@ defmodule TodoEx.Server do
   def handle_cast({:add_entry, entry}, {name, list}) do
     new_list = List.add_entry(list, entry)
     Database.store(name, new_list)
-    {:noreply, {name, new_list}}
+    {:noreply, {name, new_list}, @idle_timeout}
   end
 
   def handle_cast({:delete_entry, id}, {name, list}) do
     new_list = List.delete_entry(list, id)
     Database.store(name, new_list)
-    {:noreply, {name, new_list}}
+    {:noreply, {name, new_list}, @idle_timeout}
   end
 
   def handle_cast({:update_entry, id, content}, {name, list}) do
     new_list = List.update_entry(list, id, content)
     Database.store(name, new_list)
-    {:noreply, {name, new_list}}
+    {:noreply, {name, new_list}, @idle_timeout}
   end
 
   @doc false
   @impl GenServer
   def handle_call({:query_entry, id}, _, {_, list} = state) do
-    {:reply, List.entry(list, id), state}
+    {:reply, List.entry(list, id), state, @idle_timeout}
   end
 
   def handle_call(:query_all_entries, _, {_, list} = state) do
-    {:reply, List.entries(list), state}
+    {:reply, List.entries(list), state, @idle_timeout}
   end
 
   def handle_call({:query_entries_by_date, date}, _, {_, list} = state) do
-    {:reply, List.entries(list, date), state}
+    {:reply, List.entries(list, date), state, @idle_timeout}
   end
 end

@@ -24,3 +24,6 @@ todo_ex-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
+
+# Filebased database
+/db/

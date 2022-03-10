@@ -2,7 +2,7 @@ defmodule TodoEx.Server do
   use GenServer, restart: :temporary
   alias TodoEx.{Database, Entry, List}
 
-  @idle_timeout :timer.seconds(10)
+  @idle_timeout :timer.seconds(60)
 
   #   _____________________
   # ((                    ))
@@ -15,7 +15,7 @@ defmodule TodoEx.Server do
   """
   @spec start_link(name :: String.t()) :: GenServer.on_start()
   def start_link(name) when is_binary(name) do
-    GenServer.start_link(__MODULE__, name, name: via(name))
+    GenServer.start_link(__MODULE__, name, name: {:global, {__MODULE__, name}})
   end
 
   @doc """
@@ -66,8 +66,12 @@ defmodule TodoEx.Server do
     GenServer.call(pid, {:query_entries_by_date, date})
   end
 
-  defp via(name) do
-    TodoEx.ProcessRegistry.via({__MODULE__, name})
+  @spec whereis(name :: String.t()) :: pid() | nil
+  def whereis(name) do
+    case :global.whereis_name({__MODULE__, name}) do
+      :undefined -> nil
+      pid -> pid
+    end
   end
 
   #   __________________________

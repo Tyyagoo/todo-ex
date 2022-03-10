@@ -17,10 +17,7 @@ defmodule TodoEx.Cache do
   """
   @spec server_process(todo_list_name :: String.t()) :: pid()
   def server_process(todo_list_name) do
-    case start_child(todo_list_name) do
-      {:ok, pid} -> pid
-      {:error, {:already_started, pid}} -> pid
-    end
+    existing_server(todo_list_name) || new_server(todo_list_name)
   end
 
   def child_spec(_) do
@@ -29,6 +26,17 @@ defmodule TodoEx.Cache do
       start: {__MODULE__, :start_link, []},
       type: :supervisor
     }
+  end
+
+  defp existing_server(todo_list_name) do
+    Server.whereis(todo_list_name)
+  end
+
+  defp new_server(todo_list_name) do
+    case start_child(todo_list_name) do
+      {:ok, pid} -> pid
+      {:error, {:already_started, pid}} -> pid
+    end
   end
 
   defp start_child(todo_list_name) do
